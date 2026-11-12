@@ -1,4 +1,3 @@
-"""Detect injection in extraction JSON using a local Ollama server."""
 import argparse
 import json
 from pathlib import Path
@@ -50,10 +49,7 @@ def build_sources(document):
         prefix = f"pages.{index}"
         add(f"{prefix}.raw_text", page.get("raw_text", ""))
         # Include all spans: ordinary extraction can omit invisible text.
-        add(
-            f"{prefix}.span_text",
-            "\n".join(s["text"] for s in page["spans"]),
-        )
+        add(f"{prefix}.span_text", "\n".join(s["text"] for s in page["spans"]))
         for ai, annotation in enumerate(page.get("annotations", [])):
             for key, value in annotation.get("info", {}).items():
                 if isinstance(value, str):
@@ -72,18 +68,11 @@ def validate_result(result, sources):
         raise ValueError("Expected findings array")
     texts = {s["source_id"]: s["text"] for s in sources}
     for finding in result["findings"]:
-        if (
-            not isinstance(finding, dict)
-            or set(finding) != {"source_id", "evidence_quote", "explanation"}
-            or not all(
-                isinstance(v, str) and v.strip() for v in finding.values()
-            )
-        ):
+        if not isinstance(finding, dict) or set(finding) != {
+            "source_id", "evidence_quote", "explanation"
+        } or not all(isinstance(v, str) and v.strip() for v in finding.values()):
             raise ValueError("Invalid finding")
-        if (
-            finding["source_id"] not in texts
-            or finding["evidence_quote"] not in texts[finding["source_id"]]
-        ):
+        if finding["source_id"] not in texts or finding["evidence_quote"] not in texts[finding["source_id"]]:
             raise ValueError("Model returned unsupported evidence")
     if result["assessment"] == "suspicious" and not result["findings"]:
         raise ValueError("Suspicious assessment requires evidence")
@@ -102,22 +91,17 @@ def detect(sources, model, host, timeout, context):
         ],
         "options": {"temperature": 0, "num_ctx": context, "num_predict": 1024},
     }
-    request = Request(
-        host.rstrip("/") + "/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
+    request = Request(host.rstrip("/") + "/api/chat",
+                      data=json.dumps(payload).encode("utf-8"),
+                      headers={"Content-Type": "application/json"})
     with urlopen(request, timeout=timeout) as response:
         envelope = json.load(response)
     if envelope.get("done") is not True or envelope.get("done_reason") == "length":
         raise ValueError("Model response is incomplete")
     result = validate_result(json.loads(envelope["message"]["content"]), sources)
-    return {
-        "model": envelope.get("model", model),
-        "analysis": result,
-        "prompt_eval_count": envelope.get("prompt_eval_count"),
-        "eval_count": envelope.get("eval_count"),
-    }
+    return {"model": envelope.get("model", model), "analysis": result,
+            "prompt_eval_count": envelope.get("prompt_eval_count"),
+            "eval_count": envelope.get("eval_count")}
 
 
 def main(argv=None):
@@ -130,9 +114,7 @@ def main(argv=None):
     parser.add_argument("-o", "--output", type=Path)
     args = parser.parse_args(argv)
     if args.timeout <= 0 or args.context < 2048:
-        parser.error(
-            "timeout must be positive and context must be at least 2048"
-        )
+        parser.error("timeout must be positive and context must be at least 2048")
     try:
         if args.output and args.output.resolve() == args.evidence.resolve():
             raise ValueError("Output cannot overwrite input evidence")
@@ -142,11 +124,10 @@ def main(argv=None):
             raise ValueError("Input JSON exceeds 10 MiB")
         document = validate_evidence(json.loads(args.evidence.read_text(encoding="utf-8-sig")))
         sources = build_sources(document)
+        # Conservative English-input budget, reserving space for prompt and output.
+        # This is a guard, not an exact tokenizer calculation; never intentionally truncate.
         if len(json.dumps({"sources": sources}, ensure_ascii=False).encode("utf-8")) > args.context - 1800:
-            raise ValueError(
-                "Evidence exceeds conservative context budget; increase "
-                "--context or use a shorter document"
-            )
+            raise ValueError("Evidence exceeds conservative context budget; increase --context or use a shorter document")
         result = detect(sources, args.model, args.host, args.timeout, args.context)
         result["input_file"] = str(args.evidence)
         output = json.dumps(result, indent=2, ensure_ascii=False) + "\n"

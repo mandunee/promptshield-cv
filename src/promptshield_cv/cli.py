@@ -14,6 +14,8 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     extract = commands.add_parser("extract", help="Extract PDF evidence and heuristic signals")
     extract.add_argument("pdf", type=Path)
+    extract.add_argument("--ocr", action="store_true", help="Run full-page English OCR comparison")
+    extract.add_argument("--ocr-threshold", type=float, default=0.15)
     scan = commands.add_parser("scan", help="Rescan a previously extracted JSON file")
     scan.add_argument("pdf", type=Path)
     for command in (extract, scan):
@@ -27,6 +29,9 @@ def main(argv=None):
     if args.max_pages <= 0 or args.max_mb <= 0:
         parser.error("Limits must be positive")
         
+    if args.command == "extract" and not 0 <= args.ocr_threshold <= 1:
+        parser.error("OCR threshold must be between 0 and 1")
+
     try:
         if args.output and args.output.resolve() == args.pdf.resolve():
             raise ValueError("Output cannot overwrite the input PDF")
@@ -36,7 +41,8 @@ def main(argv=None):
             result = scan_document(validate_evidence(json.loads(args.pdf.read_text(encoding="utf-8"))))
         else:
             result = extract_and_scan(args.pdf, getpass.getpass("PDF password: ") if args.ask_password else None,
-                             args.max_pages, args.max_mb * 1024 * 1024)
+                             args.max_pages, args.max_mb * 1024 * 1024,
+                             ocr=args.ocr, ocr_threshold=args.ocr_threshold)
         output = (json.dumps(result, ensure_ascii=False, indent=2) if args.format == "json"
                   else "\n\f\n".join(p["raw_text"] for p in result["pages"]))
         if args.output:
