@@ -93,3 +93,7 @@ def main():
         parser.exit(1, f'Experiment failed: {exc}\n')
     print(f'Saved {len(rows)} outcomes to {args.output_dir}/summary.csv')
     return 1 if any(r['status'] in ('execution_error', 'ocr_failed') for r in rows) else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
