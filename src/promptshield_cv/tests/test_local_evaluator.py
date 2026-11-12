@@ -5,7 +5,25 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('local_evaluator', Path(__file__).parents[1] / 'src/test_local_evaluator.py')
+DETECTOR_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "test_local_evaluator.py"
+)
+
+if not DETECTOR_PATH.is_file():
+    raise FileNotFoundError(
+        f"Detector script not found: {DETECTOR_PATH}"
+    )
+
+spec = importlib.util.spec_from_file_location(
+    "local_evaluator_under_test",
+    DETECTOR_PATH,
+)
+
+if spec is None or spec.loader is None:
+    raise ImportError(
+        f"Cannot load detector script: {DETECTOR_PATH}"
+    )
 evaluator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(evaluator)
 

@@ -6,6 +6,7 @@ import sys
 import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+import uuid
 
 from ..schemas import validate_evidence
 
@@ -92,9 +93,50 @@ def evaluate(document, job, model='qwen3:4b', host='http://localhost:11434', tim
     start = time.monotonic()
     with urlopen(request, timeout=timeout) as response:
         envelope = json.load(response)
-    if envelope.get('done') is not True or envelope.get('done_reason') == 'length':
-        raise ValueError('Incomplete model response')
-    assessment = validate_assessment(json.loads(envelope['message']['content']))
+    try:
+        if (
+            envelope.get("done") is not True
+            or envelope.get("done_reason") == "length"
+        ):
+            raise ValueError(
+                "Incomplete model response: "
+                f"done={envelope.get('done')!r}, "
+                f"done_reason={envelope.get('done_reason')!r}, "
+                f"eval_count={envelope.get('eval_count')!r}"
+            )
+
+        assessment = validate_assessment(
+            json.loads(envelope["message"]["content"])
+        )
+
+    except (ValueError, KeyError, TypeError) as exc:
+        debug_dir = Path("outputs/model_failures")
+        debug_dir.mkdir(parents=True, exist_ok=True)
+
+        debug_path = debug_dir / f"{uuid.uuid4().hex}.json"
+
+        diagnostic = {
+            "model": model,
+            "prompt_version": PROMPT_VERSION,
+            "messages": messages,
+            "options": options,
+            "request_think": False,
+            "response": envelope,
+            "error": str(exc),
+        }
+
+        with debug_path.open("x", encoding="utf-8") as file:
+            json.dump(
+                diagnostic,
+                file,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        raise ValueError(
+            f"{exc}; diagnostic saved to {debug_path}"
+        ) from exc
+    
     return {
         'status': 'completed', 'model': envelope.get('model', model),
         'prompt_version': PROMPT_VERSION, 'input_policy': 'spans_only',

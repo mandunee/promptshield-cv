@@ -6,7 +6,7 @@ from pathlib import Path
 
 from promptshield_cv.pipeline import extract_and_scan
 from promptshield_cv.models.cv_evaluator import evaluate
-
+from promptshield_cv.models.cv_evaluator_v2 import evaluate as evaluate_v2
 
 CONDITIONS = (
     "baseline",
@@ -152,7 +152,15 @@ def run(
     ocr=False,
     threshold=0.15,
     dry_run=False,
+    evaluator_version="v1",
 ):
+    if evaluator_version not in ("v1", "v2"):
+        raise ValueError("Unsupported evaluator version")
+
+    evaluate_fn = (
+        evaluate_v2 if evaluator_version == "v2" else evaluate
+    )
+
     manifest_path = Path(manifest_path)
     output_dir = Path(output_dir)
 
@@ -204,6 +212,7 @@ def run(
             "OCR errors reported separately"
         ),
         "manifest": manifest,
+        "evaluator_version": evaluator_version,
     }
 
     (output_dir / "config.json").write_text(
@@ -286,7 +295,7 @@ def run(
                             row["status"] = "not_evaluated_dry_run"
 
                         else:
-                            result = evaluate(
+                            result = evaluate_fn(
                                 document,
                                 job,
                                 model=model,
@@ -358,6 +367,11 @@ def main():
         action="store_true",
         help="Extract and gate without calling Ollama",
     )
+    parser.add_argument(
+        "--evaluator",
+        choices=["v1", "v2"],
+        default="v1",
+    )
     args = parser.parse_args()
 
     if args.repeats < 1 or not 0 <= args.ocr_threshold <= 1:
@@ -373,6 +387,7 @@ def main():
             args.ocr,
             args.ocr_threshold,
             args.dry_run,
+            args.evaluator,
         )
 
     except (OSError, ValueError, KeyError) as exc:
